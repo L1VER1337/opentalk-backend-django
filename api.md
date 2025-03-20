@@ -840,3 +840,375 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
   ]
 }
 ```
+
+## Чаты и сообщения
+
+### Получение списка чатов
+
+**URL**: `GET /api/chats/`
+
+**Требуется авторизация**: Да
+
+**Заголовки**:
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Ответ в случае успеха** (HTTP 200 OK):
+```json
+[
+  {
+    "id": 1,
+    "user": {
+      "id": 2,
+      "username": "ivanova",
+      "full_name": "Анна Иванова",
+      "avatar": "media/avatars/anna.jpg",
+      "is_verified": false
+    },
+    "last_message": {
+      "content": "Привет, как дела?",
+      "timestamp": "2023-03-20T14:15:22Z"
+    },
+    "unread_count": 0,
+    "is_pinned": false,
+    "created_at": "2023-03-15T10:00:00Z"
+  },
+  {
+    "id": 2,
+    "user": {
+      "id": 3,
+      "username": "petrov",
+      "full_name": "Петр Петров",
+      "avatar": null,
+      "is_verified": true
+    },
+    "last_message": {
+      "content": "Спасибо за информацию!",
+      "timestamp": "2023-03-21T09:30:15Z"
+    },
+    "unread_count": 2,
+    "is_pinned": true,
+    "created_at": "2023-03-18T12:00:00Z"
+  }
+]
+```
+
+### Создание нового чата
+
+**URL**: `POST /api/chats/`
+
+**Требуется авторизация**: Да
+
+**Заголовки**:
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+Content-Type: application/json
+```
+
+**Тело запроса**:
+```json
+{
+  "userId": 3
+}
+```
+
+**Ответ в случае успеха** (HTTP 201 Created):
+```json
+{
+  "id": 3,
+  "user": {
+    "id": 3,
+    "username": "petrov",
+    "full_name": "Петр Петров",
+    "avatar": null,
+    "is_verified": true
+  },
+  "created_at": "2023-03-22T15:45:30Z",
+  "is_pinned": false
+}
+```
+
+### Получение сообщений чата
+
+**URL**: `GET /api/chats/{id}/messages/`
+
+**Требуется авторизация**: Да
+
+**Заголовки**:
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Параметры запроса**:
+- `limit`: количество сообщений (по умолчанию 50)
+- `offset`: смещение для пагинации
+- `sortOrder`: порядок сортировки ('asc' или 'desc')
+
+**Пример запроса**: `GET /api/chats/1/messages/?limit=10&offset=0&sortOrder=desc`
+
+**Ответ в случае успеха** (HTTP 200 OK):
+```json
+[
+  {
+    "id": 15,
+    "chat": 1,
+    "sender": {
+      "id": 2,
+      "username": "ivanova",
+      "full_name": "Анна Иванова",
+      "avatar": "media/avatars/anna.jpg",
+      "is_verified": false
+    },
+    "content": "Привет, как дела?",
+    "timestamp": "2023-03-20T14:15:22Z",
+    "is_read": true,
+    "attachments": []
+  },
+  {
+    "id": 14,
+    "chat": 1,
+    "sender": {
+      "id": 1,
+      "username": "example_user",
+      "full_name": "Иван Иванов",
+      "avatar": null,
+      "is_verified": false
+    },
+    "content": "Здравствуй! У меня всё хорошо, спасибо!",
+    "timestamp": "2023-03-20T14:20:10Z",
+    "is_read": true,
+    "attachments": []
+  }
+]
+```
+
+### Отправка сообщения
+
+**URL**: `POST /api/chats/{id}/messages/`
+
+**Требуется авторизация**: Да
+
+**Заголовки**:
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+Content-Type: application/json
+```
+
+**Тело запроса**:
+```json
+{
+  "content": "Привет! Как твои дела?",
+  "attachments": [1, 2]
+}
+```
+
+**Ответ в случае успеха** (HTTP 201 Created):
+```json
+{
+  "id": 16,
+  "chat": 1,
+  "sender": {
+    "id": 1,
+    "username": "example_user",
+    "full_name": "Иван Иванов",
+    "avatar": null,
+    "is_verified": false
+  },
+  "content": "Привет! Как твои дела?",
+  "timestamp": "2023-03-22T16:10:45Z",
+  "is_read": false,
+  "attachments": [
+    {
+      "id": 1,
+      "file": "chat_attachments/document.pdf",
+      "file_url": "http://example.com/media/chat_attachments/document.pdf",
+      "file_type": "document",
+      "file_name": "document.pdf",
+      "file_size": 1245678,
+      "upload_date": "2023-03-22T16:09:30Z",
+      "uploader": 1
+    },
+    {
+      "id": 2,
+      "file": "chat_attachments/image.jpg",
+      "file_url": "http://example.com/media/chat_attachments/image.jpg",
+      "file_type": "image",
+      "file_name": "image.jpg",
+      "file_size": 345678,
+      "upload_date": "2023-03-22T16:10:00Z",
+      "uploader": 1
+    }
+  ]
+}
+```
+
+### Отметка сообщений как прочитанных
+
+**URL**: `PUT /api/chats/{id}/messages/read/`
+
+**Требуется авторизация**: Да
+
+**Заголовки**:
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+Content-Type: application/json
+```
+
+**Тело запроса**:
+```json
+{
+  "message_ids": [14, 15]
+}
+```
+
+**Ответ в случае успеха** (HTTP 200 OK):
+```json
+{
+  "status": "success",
+  "updated_count": 2
+}
+```
+
+### Загрузка вложения
+
+**URL**: `POST /api/attachments/`
+
+**Требуется авторизация**: Да
+
+**Заголовки**:
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+Content-Type: multipart/form-data
+```
+
+**Тело запроса**:
+```
+file: [файл]
+```
+
+**Ответ в случае успеха** (HTTP 201 Created):
+```json
+{
+  "id": 3,
+  "file": "chat_attachments/presentation.pptx",
+  "file_url": "http://example.com/media/chat_attachments/presentation.pptx",
+  "file_type": "document",
+  "file_name": "presentation.pptx",
+  "file_size": 2345678,
+  "upload_date": "2023-03-22T16:30:20Z",
+  "uploader": 1
+}
+```
+
+### Поиск сообщений
+
+**URL**: `GET /api/messages/search/`
+
+**Требуется авторизация**: Да
+
+**Заголовки**:
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Параметры запроса**:
+- `q`: поисковый запрос
+- `chatId`: (опционально) ID чата для ограничения поиска
+- `limit`: максимальное количество результатов
+
+**Пример запроса**: `GET /api/messages/search/?q=привет&limit=5`
+
+**Ответ в случае успеха** (HTTP 200 OK):
+```json
+[
+  {
+    "id": 15,
+    "chat": 1,
+    "sender": {
+      "id": 2,
+      "username": "ivanova",
+      "full_name": "Анна Иванова",
+      "avatar": "media/avatars/anna.jpg",
+      "is_verified": false
+    },
+    "content": "Привет, как дела?",
+    "timestamp": "2023-03-20T14:15:22Z",
+    "is_read": true,
+    "attachments": []
+  },
+  {
+    "id": 16,
+    "chat": 1,
+    "sender": {
+      "id": 1,
+      "username": "example_user",
+      "full_name": "Иван Иванов",
+      "avatar": null,
+      "is_verified": false
+    },
+    "content": "Привет! Как твои дела?",
+    "timestamp": "2023-03-22T16:10:45Z",
+    "is_read": false,
+    "attachments": [
+      {
+        "id": 1,
+        "file": "chat_attachments/document.pdf",
+        "file_url": "http://example.com/media/chat_attachments/document.pdf",
+        "file_type": "document",
+        "file_name": "document.pdf",
+        "file_size": 1245678,
+        "upload_date": "2023-03-22T16:09:30Z",
+        "uploader": 1
+      },
+      {
+        "id": 2,
+        "file": "chat_attachments/image.jpg",
+        "file_url": "http://example.com/media/chat_attachments/image.jpg",
+        "file_type": "image",
+        "file_name": "image.jpg",
+        "file_size": 345678,
+        "upload_date": "2023-03-22T16:10:00Z",
+        "uploader": 1
+      }
+    ]
+  }
+]
+```
+
+### Получение статусов онлайн
+
+**URL**: `POST /api/users/online-status/`
+
+**Требуется авторизация**: Да
+
+**Заголовки**:
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+Content-Type: application/json
+```
+
+**Тело запроса**:
+```json
+{
+  "userIds": [2, 3, 4]
+}
+```
+
+**Ответ в случае успеха** (HTTP 200 OK):
+```json
+{
+  "2": {
+    "status": "online",
+    "is_online": true
+  },
+  "3": {
+    "status": "offline",
+    "is_online": false
+  },
+  "4": {
+    "status": "dnd",
+    "is_online": false
+  }
+}
+```

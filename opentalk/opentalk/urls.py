@@ -24,9 +24,9 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework.permissions import AllowAny
 
-from users.views import UserViewSet, RegisterView, ChangePasswordView, UpdateStatusView, LogoutView
+from users.views import UserViewSet, RegisterView, ChangePasswordView, UpdateStatusView, LogoutView, OnlineStatusView
 from posts.views import PostViewSet, CommentViewSet, HashtagViewSet, TrendViewSet
-# from messages_api.views import ChatViewSet, MessageViewSet
+from messages_api.views import ChatViewSet, MessageViewSet, AttachmentViewSet
 # from notifications.views import NotificationViewSet, PremiumViewSet
 
 # Создаем автоматический роутер для API
@@ -36,8 +36,9 @@ router.register(r'posts', PostViewSet)
 router.register(r'comments', CommentViewSet)
 router.register(r'hashtags', HashtagViewSet)
 router.register(r'trends', TrendViewSet)
-# router.register(r'chats', ChatViewSet, basename='chat')
-# router.register(r'messages', MessageViewSet, basename='message')
+router.register(r'chats', ChatViewSet, basename='chat')
+router.register(r'messages', MessageViewSet, basename='message')
+router.register(r'attachments', AttachmentViewSet, basename='attachment')
 # router.register(r'notifications', NotificationViewSet, basename='notification')
 # router.register(r'premium', PremiumViewSet, basename='premium')
 
@@ -70,6 +71,7 @@ urlpatterns = [
     
     # Пользовательские эндпоинты
     path('api/users/update_status/', UpdateStatusView.as_view(), name='update_status'),
+    path('api/users/online-status/', OnlineStatusView.as_view(), name='online_status'),
     
     # Документация API
     path('api/swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),

@@ -1,79 +1,145 @@
 from django.db import models
+from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
-from users.models import User
 import json
+
+User = get_user_model()
 
 
 class Chat(models.Model):
     """
-    Модель чата (личные и групповые чаты)
+    Модель чата между двумя пользователями
     """
-    name = models.CharField(_("Название"), max_length=255, blank=True, null=True)
-    is_group = models.BooleanField(_("Групповой чат"), default=False)
-    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
-    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
-    avatar = models.ImageField(_("Аватар"), upload_to='chat_avatars/', null=True, blank=True)
+    user1 = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='chats_as_user1',
+        verbose_name=_("Первый пользователь")
+    )
+    user2 = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='chats_as_user2',
+        verbose_name=_("Второй пользователь")
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name=_("Дата создания")
+    )
+    is_pinned = models.BooleanField(
+        default=False,
+        verbose_name=_("Закреплен")
+    )
     
     class Meta:
         verbose_name = _("Чат")
         verbose_name_plural = _("Чаты")
-        ordering = ['-updated_at']
+        # Уникальное ограничение для пары пользователей
+        unique_together = ('user1', 'user2')
     
     def __str__(self):
-        if self.is_group and self.name:
-            return f"Групповой чат: {self.name}"
-        return f"Чат {self.id}"
+        return f"Чат между {self.user1.username} и {self.user2.username}"
 
 
-class ChatMember(models.Model):
+class Attachment(models.Model):
     """
-    Модель участника чата
+    Модель для вложений в сообщениях
     """
-    ROLE_CHOICES = (
-        ('admin', 'Администратор'),
-        ('member', 'Участник'),
+    file = models.FileField(
+        upload_to='chat_attachments/',
+        verbose_name=_("Файл")
+    )
+    file_type = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name=_("Тип файла")
+    )
+    file_name = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name=_("Имя файла")
+    )
+    file_size = models.PositiveIntegerField(
+        default=0,
+        verbose_name=_("Размер файла (байт)")
+    )
+    upload_date = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name=_("Дата загрузки")
+    )
+    uploader = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='uploaded_attachments',
+        verbose_name=_("Кто загрузил")
     )
     
-    chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name='members', verbose_name=_("Чат"))
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='chats', verbose_name=_("Пользователь"))
-    role = models.CharField(_("Роль"), max_length=10, choices=ROLE_CHOICES, default='member')
-    joined_at = models.DateTimeField(_("Дата присоединения"), auto_now_add=True)
-    last_read_message = models.ForeignKey('Message', on_delete=models.SET_NULL, null=True, blank=True, 
-                                        related_name='+', verbose_name=_("Последнее прочитанное сообщение"))
-    
     class Meta:
-        verbose_name = _("Участник чата")
-        verbose_name_plural = _("Участники чатов")
-        unique_together = ('chat', 'user')  # Пользователь может быть в чате только один раз
+        verbose_name = _("Вложение")
+        verbose_name_plural = _("Вложения")
     
     def __str__(self):
-        return f"{self.user.username} в чате {self.chat.id} ({self.role})"
+        return f"Вложение {self.file_name} от {self.uploader.username}"
+    
+    def save(self, *args, **kwargs):
+        # Если файл только что загружен, автоматически заполняем метаданные
+        if self.file and not self.file_name:
+            self.file_name = self.file.name.split('/')[-1]
+            self.file_size = self.file.size
+            # Определение типа файла по расширению
+            extension = self.file_name.split('.')[-1].lower() if '.' in self.file_name else ''
+            if extension in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                self.file_type = 'image'
+            elif extension in ['mp4', 'avi', 'mov', 'webm']:
+                self.file_type = 'video'
+            elif extension in ['mp3', 'wav', 'ogg']:
+                self.file_type = 'audio'
+            elif extension in ['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt', 'pptx']:
+                self.file_type = 'document'
+            else:
+                self.file_type = 'other'
+        
+        super().save(*args, **kwargs)
 
 
 class Message(models.Model):
     """
     Модель сообщения в чате
     """
-    chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name='messages', verbose_name=_("Чат"))
-    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages', verbose_name=_("Отправитель"))
-    content = models.TextField(_("Содержание"))
-    media_urls = models.TextField(_("Медиа"), blank=True, null=True)
-    created_at = models.DateTimeField(_("Дата отправки"), auto_now_add=True)
-    is_read = models.BooleanField(_("Прочитано"), default=False)
-    is_edited = models.BooleanField(_("Отредактировано"), default=False)
+    chat = models.ForeignKey(
+        Chat,
+        on_delete=models.CASCADE,
+        related_name='messages',
+        verbose_name=_("Чат")
+    )
+    sender = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='sent_messages',
+        verbose_name=_("Отправитель")
+    )
+    content = models.TextField(
+        verbose_name=_("Содержание")
+    )
+    attachments = models.ManyToManyField(
+        Attachment,
+        related_name='messages',
+        blank=True,
+        verbose_name=_("Вложения")
+    )
+    timestamp = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name=_("Дата отправки")
+    )
+    is_read = models.BooleanField(
+        default=False,
+        verbose_name=_("Прочитано")
+    )
     
     class Meta:
         verbose_name = _("Сообщение")
         verbose_name_plural = _("Сообщения")
-        ordering = ['created_at']
+        ordering = ['-timestamp']
     
     def __str__(self):
-        return f"{self.sender.username} в чате {self.chat.id}: {self.content[:30]}"
-    
-    def get_media_urls(self):
-        if self.media_urls:
-            return json.loads(self.media_urls)
-        return []
-    
-    def set_media_urls(self, urls_list):
-        self.media_urls = json.dumps(urls_list)
+        return f"Сообщение от {self.sender.username} в {self.chat}"

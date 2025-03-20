@@ -300,3 +300,32 @@ class LogoutView(generics.GenericAPIView):
                 {"detail": f"Произошла ошибка при выходе: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+class OnlineStatusView(generics.GenericAPIView):
+    """
+    View для получения статусов онлайн пользователей
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        user_ids = request.data.get('userIds', [])
+        
+        if not user_ids:
+            return Response(
+                {"detail": "Необходимо указать список ID пользователей."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Получение статусов пользователей
+        users = User.objects.filter(id__in=user_ids)
+        
+        # Формирование ответа
+        statuses = {}
+        for user in users:
+            statuses[str(user.id)] = {
+                'status': user.status,
+                'is_online': user.status == 'online'
+            }
+        
+        return Response(statuses)

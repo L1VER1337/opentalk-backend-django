@@ -142,46 +142,51 @@ CREATE TABLE posts_trend (
     FOREIGN KEY (hashtag_id) REFERENCES posts_hashtag (id) ON DELETE CASCADE
 );
 
--- Чаты
+-- Чаты (обновлено в соответствии с моделью Django)
 CREATE TABLE messages_api_chat (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NULL,
-    is_group BOOLEAN NOT NULL DEFAULT FALSE,
+    user1_id BIGINT NOT NULL,
+    user2_id BIGINT NOT NULL,
     created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
-    avatar VARCHAR(100) NULL
+    is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+    FOREIGN KEY (user1_id) REFERENCES users_user (id) ON DELETE CASCADE,
+    FOREIGN KEY (user2_id) REFERENCES users_user (id) ON DELETE CASCADE,
+    UNIQUE (user1_id, user2_id)
 );
 
--- Участники чата
-CREATE TABLE messages_api_chatmember (
+-- Вложения для сообщений (добавлено в соответствии с моделью Django)
+CREATE TABLE messages_api_attachment (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    chat_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL,
-    role VARCHAR(10) NOT NULL DEFAULT 'member',
-    joined_at DATETIME NOT NULL,
-    last_read_message_id BIGINT NULL,
-    FOREIGN KEY (chat_id) REFERENCES messages_api_chat (id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users_user (id) ON DELETE CASCADE,
-    UNIQUE (chat_id, user_id)
+    file VARCHAR(100) NOT NULL,
+    file_type VARCHAR(100) NULL,
+    file_name VARCHAR(255) NULL,
+    file_size INT UNSIGNED NOT NULL DEFAULT 0,
+    upload_date DATETIME NOT NULL,
+    uploader_id BIGINT NOT NULL,
+    FOREIGN KEY (uploader_id) REFERENCES users_user (id) ON DELETE CASCADE
 );
 
--- Сообщения в чате
+-- Сообщения в чате (обновлено в соответствии с моделью Django)
 CREATE TABLE messages_api_message (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     chat_id BIGINT NOT NULL,
     sender_id BIGINT NOT NULL,
     content TEXT NOT NULL,
-    media_urls TEXT NULL,
-    created_at DATETIME NOT NULL,
+    timestamp DATETIME NOT NULL,
     is_read BOOLEAN NOT NULL DEFAULT FALSE,
-    is_edited BOOLEAN NOT NULL DEFAULT FALSE,
     FOREIGN KEY (chat_id) REFERENCES messages_api_chat (id) ON DELETE CASCADE,
     FOREIGN KEY (sender_id) REFERENCES users_user (id) ON DELETE CASCADE
 );
 
--- Обновление внешнего ключа для последнего прочитанного сообщения
-ALTER TABLE messages_api_chatmember
-ADD FOREIGN KEY (last_read_message_id) REFERENCES messages_api_message (id) ON DELETE SET NULL;
+-- Связь сообщений с вложениями (связь многие-ко-многим)
+CREATE TABLE messages_api_message_attachments (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    message_id BIGINT NOT NULL,
+    attachment_id BIGINT NOT NULL,
+    FOREIGN KEY (message_id) REFERENCES messages_api_message (id) ON DELETE CASCADE,
+    FOREIGN KEY (attachment_id) REFERENCES messages_api_attachment (id) ON DELETE CASCADE,
+    UNIQUE (message_id, attachment_id)
+);
 
 -- Голосовые каналы
 CREATE TABLE voice_voicechannel (
@@ -293,6 +298,8 @@ CREATE INDEX idx_voicemember_channel_id ON voice_voicechannelmember (channel_id)
 CREATE INDEX idx_call_caller_id ON voice_call (caller_id);
 CREATE INDEX idx_call_receiver_id ON voice_call (receiver_id);
 CREATE INDEX idx_trending_score ON posts_trend (trend_score);
+CREATE INDEX idx_message_timestamp ON messages_api_message (timestamp);
+CREATE INDEX idx_attachment_uploader ON messages_api_attachment (uploader_id);
 
 -- Добавим ограничение на допустимые значения для статусов и типов
 ALTER TABLE users_user ADD CONSTRAINT chk_user_status CHECK (status IN ('online', 'offline', 'dnd'));
