@@ -112,16 +112,8 @@ WSGI_APPLICATION = 'opentalk.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'opentalk',
-        'USER': 'root',  # Замените на своего пользователя MySQL
-        'PASSWORD': '',  # Замените на свой пароль для MySQL
-        'HOST': 'localhost',
-        'PORT': '3306',
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-            'use_unicode': True,
-        }
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
@@ -174,3 +166,7 @@ AUTH_USER_MODEL = 'users.User'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Настройки Telegram бота
+TELEGRAM_BOT_TOKEN = '7636430941:AAE7YyIseaAEveCBWwjIDJsmT41xAo9F_4I'  # Замените на реальный токен вашего бота
+TELEGRAM_CHANNEL_ID = '-1002530711128'  # Замените на ID канала или группы

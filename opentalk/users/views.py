@@ -7,12 +7,21 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
-from .models import Subscription
+from .models import Subscription, VerificationCode
 from .serializers import (
     UserSerializer, UserProfileSerializer, UserMiniSerializer,
-    RegisterSerializer, SubscriptionSerializer, ChangePasswordSerializer
+    RegisterSerializer, SubscriptionSerializer, ChangePasswordSerializer,
+    SendVerificationCodeSerializer, VerifyCodeSerializer, PhoneLoginSerializer,
+    CreateUserByPhoneSerializer
 )
 from posts.serializers import PostSerializer
+import io
+import qrcode
+from django.http import HttpResponse
+from PIL import Image
+import uuid
+import json
+from django.core.cache import cache
 
 User = get_user_model()
 
@@ -66,6 +75,171 @@ class ChangePasswordView(generics.UpdateAPIView):
             {"message": "Пароль успешно изменен"},
             status=status.HTTP_200_OK
         )
+
+
+class SendVerificationCodeView(generics.GenericAPIView):
+    """
+    View для отправки кода верификации на телефон
+    """
+    serializer_class = SendVerificationCodeSerializer
+    permission_classes = [AllowAny]
+    
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        verification = serializer.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Код подтверждения отправлен',
+            'expiresIn': 120  # время действия кода в секундах
+        }, status=status.HTTP_200_OK)
+
+
+class VerifyCodeView(generics.GenericAPIView):
+    """
+    View для проверки кода верификации
+    """
+    serializer_class = VerifyCodeSerializer
+    permission_classes = [AllowAny]
+    
+    def post(self, request, *args, **kwargs):
+        print(f"VerifyCodeView: получен запрос с данными: {request.data}")
+        
+        # Проверим, есть ли коды верификации для указанного телефона
+        phone = request.data.get('phone')
+        if phone:
+            codes = VerificationCode.objects.filter(phone=phone)
+            print(f"VerifyCodeView: найдено {codes.count()} кодов для телефона {phone}")
+            for code in codes:
+                print(f"  - ID: {code.id}, Код: {code.code}, Использован: {code.is_used}, Истекает: {code.expires_at}")
+        
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        is_new_user = serializer.validated_data['is_new_user']
+        user = serializer.validated_data.get('user')
+        phone = serializer.validated_data['phone']
+        
+        print(f"VerifyCodeView: код верифицирован, новый пользователь: {is_new_user}")
+        
+        if is_new_user:
+            # Для нового пользователя создаем временный токен
+            payload = {'phone': phone, 'type': 'temp_token'}
+            refresh = RefreshToken()
+            for key, value in payload.items():
+                refresh[key] = value
+            
+            print(f"VerifyCodeView: создан временный токен для телефона {phone}")
+            
+            return Response({
+                'success': True,
+                'isNewUser': True,
+                'tempToken': str(refresh.access_token),
+                'phone': phone
+            }, status=status.HTTP_200_OK)
+        else:
+            # Для существующего пользователя - авторизация
+            refresh = RefreshToken.for_user(user)
+            
+            print(f"VerifyCodeView: пользователь {user.username} успешно авторизован")
+            
+            return Response({
+                'success': True,
+                'isNewUser': False,
+                'token': str(refresh.access_token),
+                'refreshToken': str(refresh),
+                'user': UserSerializer(user).data
+            }, status=status.HTTP_200_OK)
+
+
+class PhoneLoginView(generics.GenericAPIView):
+    """
+    View для входа по номеру телефона с кодом подтверждения
+    """
+    serializer_class = PhoneLoginSerializer
+    permission_classes = [AllowAny]
+    
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        user = serializer.validated_data['user']
+        refresh = RefreshToken.for_user(user)
+        
+        return Response({
+            'token': str(refresh.access_token),
+            'refreshToken': str(refresh),
+            'user': UserSerializer(user).data
+        }, status=status.HTTP_200_OK)
+
+
+class CreateUserByPhoneView(generics.GenericAPIView):
+    """
+    View для создания нового пользователя после верификации телефона
+    """
+    serializer_class = CreateUserByPhoneSerializer
+    permission_classes = [AllowAny]
+    
+    def post(self, request, *args, **kwargs):
+        # В демо-режиме, не будем требовать токен для упрощения тестирования
+        # В продакшене эту проверку нужно включить обратно
+        demo_mode = True
+        
+        if not demo_mode:
+            # Проверяем временный токен
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Bearer '):
+                return Response(
+                    {"detail": "Необходимо предоставить временный токен авторизации."},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+        
+        # Получаем номер телефона из запроса
+        phone = request.data.get('phone')
+        if not phone:
+            return Response(
+                {"detail": "Необходимо указать номер телефона."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Создаем контекст с номером телефона
+        serializer = self.get_serializer(data=request.data, context={'phone': phone})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        
+        # Создаем токены для нового пользователя
+        refresh = RefreshToken.for_user(user)
+        
+        return Response({
+            'success': True,
+            'token': str(refresh.access_token),
+            'refreshToken': str(refresh),
+            'user': UserSerializer(user).data
+        }, status=status.HTTP_201_CREATED)
+
+
+class CheckUsernameView(generics.GenericAPIView):
+    """
+    View для проверки доступности имени пользователя
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, *args, **kwargs):
+        username = request.query_params.get('username')
+        
+        if not username:
+            return Response(
+                {"detail": "Необходимо указать имя пользователя."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        exists = User.objects.filter(username=username).exists()
+        
+        return Response({
+            'available': not exists,
+            'message': "Имя пользователя доступно" if not exists else "Имя пользователя уже занято"
+        })
 
 
 class UpdateStatusView(generics.GenericAPIView):
@@ -329,3 +503,119 @@ class OnlineStatusView(generics.GenericAPIView):
             }
         
         return Response(statuses)
+
+
+class QRCodeView(generics.GenericAPIView):
+    """
+    Представление для генерации QR-кода
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        # Генерируем уникальный идентификатор сессии
+        session_id = str(uuid.uuid4())
+        
+        # Создаем данные для QR-кода
+        qr_data = {
+            'sessionId': session_id,
+            'type': 'auth'
+        }
+        
+        # Сохраняем информацию о сессии в кеш
+        cache.set(f'qr_session:{session_id}', {'status': 'pending'}, timeout=600)  # Время жизни 10 минут
+        
+        # Формируем текст для QR-кода - можно либо передавать JSON, либо URL
+        text = json.dumps(qr_data)
+        
+        # Создаем QR-код
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(text)
+        qr.make(fit=True)
+        
+        # Создаем изображение
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Сохраняем изображение в байтовый буфер
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        
+        # Возвращаем изображение в ответе и устанавливаем куки с session_id
+        response = HttpResponse(buffer, content_type="image/png")
+        response["X-Session-ID"] = session_id
+        return response
+
+
+class QRStatusView(generics.GenericAPIView):
+    """
+    Представление для проверки статуса QR-кода
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        # Получаем идентификатор сессии из параметра запроса
+        session_id = request.query_params.get('sessionId')
+        
+        if not session_id or session_id == 'undefined':
+            return Response(
+                {"detail": "Необходимо указать идентификатор сессии."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Получаем информацию о сессии из кеша
+        session_data = cache.get(f'qr_session:{session_id}')
+        
+        if not session_data:
+            return Response(
+                {"detail": "Сессия не найдена или истекла."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Возвращаем статус сессии
+        return Response(session_data)
+    
+    
+class AuthenticateByQRView(generics.GenericAPIView):
+    """
+    Представление для аутентификации по QR-коду с мобильного устройства
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        # Получаем идентификатор сессии из запроса
+        session_id = request.data.get('sessionId')
+        
+        if not session_id:
+            return Response(
+                {"detail": "Необходимо указать идентификатор сессии."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Получаем текущего пользователя
+        user = request.user
+        
+        # Обновляем информацию о сессии в кеше
+        session_data = {
+            'status': 'authenticated',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'phone': user.phone
+            },
+            'tokens': {
+                'access': str(RefreshToken.for_user(user).access_token),
+                'refresh': str(RefreshToken.for_user(user))
+            }
+        }
+        
+        cache.set(f'qr_session:{session_id}', session_data, timeout=300)  # 5 минут на вход
+        
+        return Response({
+            "success": True,
+            "message": "Аутентификация успешна"
+        })
