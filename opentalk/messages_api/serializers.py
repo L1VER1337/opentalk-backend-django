@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from users.serializers import UserMiniSerializer
-from .models import Chat, Message, Attachment, ChatMember
+from .models import Chat, Message, Attachment
 
 User = get_user_model()
 
@@ -118,49 +118,3 @@ class ChatListSerializer(serializers.ModelSerializer):
         if last_message:
             return LastMessageSerializer(last_message).data
         return None
-
-
-class ChatMemberSerializer(serializers.ModelSerializer):
-    """
-    Сериализатор для участников чата
-    """
-    user = UserMiniSerializer(read_only=True)
-    
-    class Meta:
-        model = ChatMember
-        fields = ['id', 'chat', 'user', 'role', 'joined_at']
-        read_only_fields = ['id', 'joined_at']
-
-
-class CreateMessageSerializer(serializers.ModelSerializer):
-    """
-    Сериализатор для создания нового сообщения
-    """
-    media = serializers.ListField(
-        child=serializers.URLField(),
-        required=False,
-        write_only=True
-    )
-    
-    class Meta:
-        model = Message
-        fields = ['chat', 'content', 'media']
-    
-    def create(self, validated_data):
-        media = validated_data.pop('media', []) if 'media' in validated_data else []
-        
-        message = Message.objects.create(
-            sender=self.context['request'].user,
-            **validated_data
-        )
-        
-        if media:
-            message.set_media_urls(media)
-            message.save()
-        
-        # Обновляем время последнего обновления чата
-        chat = validated_data.get('chat')
-        chat.updated_at = message.created_at
-        chat.save()
-        
-        return message 
